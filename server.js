@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,6 +12,12 @@ const __dirname = dirname(__filename);
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ── Serve built frontend (production) ───────────────────────────
+const distPath = join(__dirname, 'dist');
+if (existsSync(distPath)) {
+  app.use(express.static(distPath));
+}
 
 // ── Database ────────────────────────────────────────────────────
 const db = new Database(join(__dirname, 'trashmails.db'));
@@ -539,8 +546,15 @@ app.delete('/api/admin/blog/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── SPA fallback (production) ───────────────────────────────────
+if (existsSync(distPath)) {
+  app.get('*', (req, res) => {
+    res.sendFile(join(distPath, 'index.html'));
+  });
+}
+
 // ── Start ───────────────────────────────────────────────────────
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`🗑️  Trash Mails API running on http://localhost:${PORT}`);
+  console.log(`🗑️  Trash Mails running on http://localhost:${PORT}`);
 });
