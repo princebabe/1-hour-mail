@@ -1,6 +1,6 @@
 import './style.css'
 
-const API = 'http://localhost:3001/api';
+const API = '/api';
 
 // ── State ───────────────────────────────────────────────────────
 let mailbox = null;
@@ -647,7 +647,7 @@ function initEventListeners() {
     try {
       const result = await api('/mailbox/custom', { method: 'POST', body: { username } });
       mailbox = result;
-      localStorage.setItem('mailbox', JSON.stringify(result));
+      localStorage.setItem('tm_mailbox', JSON.stringify(result));
       document.getElementById('email-address').textContent = result.address;
       // Update QR code image
       const qrImg = document.getElementById('qr-code-img');
@@ -677,8 +677,19 @@ function initEventListeners() {
     });
   });
 
-  // Admin button
-  document.getElementById('admin-btn')?.addEventListener('click', renderAdminDashboard);
+  // Admin button — require login
+  document.getElementById('admin-btn')?.addEventListener('click', async () => {
+    if (sessionStorage.getItem('tm_admin')) { renderAdminDashboard(); return; }
+    const username = prompt('Admin username:');
+    if (!username) return;
+    const password = prompt('Admin password:');
+    if (!password) return;
+    try {
+      await api('/admin/login', { method: 'POST', body: { username, password } });
+      sessionStorage.setItem('tm_admin', '1');
+      renderAdminDashboard();
+    } catch { toast('Invalid credentials', 'error'); }
+  });
 
   // Close sticky ad
   document.getElementById('close-sticky-ad')?.addEventListener('click', () => {
@@ -949,8 +960,6 @@ async function renderAdminDashboard() {
             `).join('')}
           </div>
         </div>
-      </div>
-    </div>
 
         <!-- ═══ BLOG MANAGER PANEL ═══ -->
         <div class="admin-panel hidden" id="panel-blog">

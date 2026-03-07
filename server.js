@@ -539,8 +539,18 @@ app.delete('/api/admin/blog/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Static files (production build) ────────────────────────────
+import { existsSync } from 'fs';
+const distPath = join(__dirname, 'dist');
+if (existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    res.sendFile(join(distPath, 'index.html'));
+  });
+}
+
 // ── Start ───────────────────────────────────────────────────────
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`🗑️  Trash Mails API running on http://localhost:${PORT}`);
+  console.log(`🗑️  Trash Mails running on http://localhost:${PORT}`);
 });
