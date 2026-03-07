@@ -1,6 +1,115 @@
 import './style.css'
 
-const API = 'http://localhost:3001/api';
+const API = '/api';
+
+// ── Demo Mode (GitHub Pages / no-backend fallback) ──────────────
+// When the Express API is unreachable (e.g. GitHub Pages static hosting),
+// _demoMode is set to true and all API calls are handled locally in the
+// browser using localStorage, so the UI remains fully interactive.
+let _demoMode = false;
+
+const _demoEmailTemplates = [
+  { sender: 'Amazon',    subject: 'Your order #4829 has been shipped! 📦', body: `Hello,\n\nGreat news! Your order #4829 has been shipped.\n\nTracking Number: 1Z999AA10123456784\nEstimated Delivery: Tomorrow\n\nThank you for shopping with us!\n\nBest regards,\nAmazon Customer Service` },
+  { sender: 'GitHub',    subject: 'New sign-in to your account',            body: `Hi there,\n\nWe noticed a new sign-in to your GitHub account.\n\nDevice: Chrome on Windows\nLocation: Karachi, Pakistan\nTime: ${new Date().toLocaleString()}\n\nIf this was you, you can safely ignore this email.\n\nGitHub Security Team` },
+  { sender: 'Netflix',   subject: 'Start your free trial today! 🎬',        body: `Welcome to Netflix!\n\nYour 30-day free trial is ready. Start watching thousands of movies and TV shows right now.\n\nEnjoy!\nThe Netflix Team` },
+  { sender: 'Spotify',   subject: 'Your Discover Weekly is ready 🎵',       body: `Hey there!\n\nYour personalized Discover Weekly playlist has been updated with 30 fresh tracks based on your listening habits.\n\nHappy listening,\nSpotify` },
+  { sender: 'LinkedIn',  subject: 'You have 5 new profile views',            body: `Hi there,\n\nPeople are looking at your profile! You've had 5 new profile views this week.\n\nLinkedIn Team` },
+  { sender: 'Stripe',    subject: 'Payment received – $49.99',               body: `Payment Confirmation\n\nAmount: $49.99 USD\nFrom: customer@example.com\nDescription: Pro Plan Subscription\nDate: ${new Date().toLocaleDateString()}\n\nStripe Payments` },
+  { sender: 'Vercel',    subject: 'Deployment successful ✅',                body: `Your deployment is live!\n\nProject: trash-mails-app\nBranch: main\nStatus: ✅ Ready\n\nVercel Team` },
+  { sender: 'Twitter/X', subject: 'Trending topics you might like',          body: `Here's what's trending right now:\n\n🔥 #TechNews\n🔥 #AI\n🔥 #WebDev\n\nJoin the conversation!\n\nThe X Team` },
+];
+
+function _generateDemoMailbox(customAddress) {
+  const adjs  = ['swift','cool','dark','fast','red','blue','wild','zen','neo','cyber','pixel','alpha','turbo','hyper','mega'];
+  const nouns = ['fox','wolf','hawk','bear','lion','star','byte','node','code','mail','box','dev','ace','io','net'];
+  const a = adjs[Math.floor(Math.random() * adjs.length)];
+  const n = nouns[Math.floor(Math.random() * nouns.length)];
+  const num = Math.floor(Math.random() * 9999);
+  return {
+    id: crypto.randomUUID(),
+    address: customAddress || `${a}.${n}${num}@trashmails.io`,
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    _demo: true,
+  };
+}
+
+function _getDemoEmails() {
+  try {
+    const raw = localStorage.getItem('tm_demo_emails');
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    localStorage.removeItem('tm_demo_emails');
+    return [];
+  }
+}
+function _saveDemoEmails(arr) {
+  localStorage.setItem('tm_demo_emails', JSON.stringify(arr));
+}
+
+function demoApiHandler(path, opts = {}) {
+  const method = opts.method || 'GET';
+  const body = opts.body || {};
+
+  if (method === 'POST' && path === '/mailbox/create')  return _generateDemoMailbox();
+  if (method === 'POST' && path === '/mailbox/refresh') return _generateDemoMailbox();
+  if (method === 'POST' && path === '/mailbox/custom')  return _generateDemoMailbox(`${body.username}@trashmails.io`);
+
+  if (method === 'GET' && path.startsWith('/mailbox/')) {
+    const saved = JSON.parse(localStorage.getItem('tm_mailbox') || 'null');
+    if (!saved) throw new Error('Not found');
+    return saved;
+  }
+
+  if (method === 'GET' && path.startsWith('/emails/')) {
+    const mailboxId = path.split('/').pop();
+    return _getDemoEmails().filter(e => e.mailbox_id === mailboxId);
+  }
+
+  if (method === 'GET' && path.startsWith('/email/')) {
+    const id = path.split('/').pop();
+    const all = _getDemoEmails();
+    const idx = all.findIndex(e => e.id === id);
+    if (idx !== -1) { all[idx].is_read = 1; _saveDemoEmails(all); return { ...all[idx], is_read: 1 }; }
+    throw new Error('Not found');
+  }
+
+  if (method === 'DELETE' && path.startsWith('/email/') && !path.startsWith('/emails/')) {
+    const id = path.split('/').pop();
+    _saveDemoEmails(_getDemoEmails().filter(e => e.id !== id));
+    return { ok: true };
+  }
+
+  if (method === 'DELETE' && path.startsWith('/emails/')) {
+    const mailboxId = path.split('/').pop();
+    _saveDemoEmails(_getDemoEmails().filter(e => e.mailbox_id !== mailboxId));
+    return { ok: true };
+  }
+
+  if (method === 'POST' && path === '/simulate') {
+    const saved = JSON.parse(localStorage.getItem('tm_mailbox') || 'null');
+    const pick = _demoEmailTemplates[Math.floor(Math.random() * _demoEmailTemplates.length)];
+    const email = {
+      id: crypto.randomUUID(),
+      mailbox_id: body.mailboxId,
+      to_address: saved?.address || '',
+      sender: pick.sender,
+      subject: pick.subject,
+      body: pick.body,
+      is_read: 0,
+      received_at: new Date().toISOString(),
+    };
+    _saveDemoEmails([email, ..._getDemoEmails()]);
+    return { id: email.id, sender: email.sender, subject: email.subject, to_address: email.to_address };
+  }
+
+  if (path === '/ads' || path.startsWith('/ads?'))                     return [];
+  if (path === '/blog' || path.startsWith('/blog?'))                   return [];
+  if (path.startsWith('/blog/'))                                       throw new Error('Post not found');
+  if (path.startsWith('/admin/'))                                      throw new Error('Not available in demo mode');
+  return null;
+}
+
 
 // ── State ───────────────────────────────────────────────────────
 let mailbox = null;
@@ -24,6 +133,7 @@ function renderAdSlot(slotId, cssClass, icon, label, dims) {
 
 // ── API ─────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
+  if (_demoMode) return demoApiHandler(path, opts);
   const res = await fetch(API + path, {
     headers: { 'Content-Type': 'application/json' },
     ...opts,
@@ -73,7 +183,13 @@ async function createMailbox() {
     localStorage.setItem('tm_mailbox', JSON.stringify(mailbox));
     return mailbox;
   } catch (e) {
-    toast('Failed to create mailbox', 'error');
+    // API unreachable (GitHub Pages / no backend) — switch to demo mode
+    _demoMode = true;
+    mailbox = _generateDemoMailbox();
+    emails = [];
+    selectedEmail = null;
+    localStorage.setItem('tm_mailbox', JSON.stringify(mailbox));
+    return mailbox;
   }
 }
 
@@ -116,9 +232,17 @@ async function renderPage() {
   const saved = localStorage.getItem('tm_mailbox');
   if (saved) {
     try {
-      mailbox = JSON.parse(saved);
-      const check = await api(`/mailbox/${mailbox.id}`);
-      if (check) mailbox = check;
+      const parsed = JSON.parse(saved);
+      if (parsed._demo) {
+        // Restore demo session without an API call
+        _demoMode = true;
+        mailbox = parsed;
+        if (new Date(mailbox.expires_at) < new Date()) await createMailbox();
+      } else {
+        mailbox = parsed;
+        const check = await api(`/mailbox/${mailbox.id}`);
+        if (check) mailbox = check;
+      }
     } catch { await createMailbox(); }
   } else {
     await createMailbox();
@@ -147,6 +271,8 @@ async function renderPage() {
         <button class="btn btn-sm btn-ghost" id="admin-btn">🛡️ Admin</button>
       </div>
     </nav>
+
+    ${_demoMode ? `<div class="demo-banner">🔧 <strong>Demo Mode</strong> — No backend connected. Emails are simulated locally in your browser. <a href="https://github.com/princebabe/1-hour-mail" target="_blank" rel="noopener">Self-host</a> for real incoming emails.</div>` : ''}
 
     <!-- AD: Top Leaderboard 728x90 -->
     <div class="ad-container ad-leaderboard-top">
@@ -647,7 +773,7 @@ function initEventListeners() {
     try {
       const result = await api('/mailbox/custom', { method: 'POST', body: { username } });
       mailbox = result;
-      localStorage.setItem('mailbox', JSON.stringify(result));
+      localStorage.setItem('tm_mailbox', JSON.stringify(result));
       document.getElementById('email-address').textContent = result.address;
       // Update QR code image
       const qrImg = document.getElementById('qr-code-img');
@@ -677,8 +803,20 @@ function initEventListeners() {
     });
   });
 
-  // Admin button
-  document.getElementById('admin-btn')?.addEventListener('click', renderAdminDashboard);
+  // Admin button — require login
+  document.getElementById('admin-btn')?.addEventListener('click', async () => {
+    if (_demoMode) { toast('Admin panel is not available in demo mode', 'error'); return; }
+    if (sessionStorage.getItem('tm_admin')) { renderAdminDashboard(); return; }
+    const username = prompt('Admin username:');
+    if (!username) return;
+    const password = prompt('Admin password:');
+    if (!password) return;
+    try {
+      await api('/admin/login', { method: 'POST', body: { username, password } });
+      sessionStorage.setItem('tm_admin', '1');
+      renderAdminDashboard();
+    } catch { toast('Invalid credentials', 'error'); }
+  });
 
   // Close sticky ad
   document.getElementById('close-sticky-ad')?.addEventListener('click', () => {
@@ -949,8 +1087,6 @@ async function renderAdminDashboard() {
             `).join('')}
           </div>
         </div>
-      </div>
-    </div>
 
         <!-- ═══ BLOG MANAGER PANEL ═══ -->
         <div class="admin-panel hidden" id="panel-blog">
@@ -1263,6 +1399,16 @@ function injectStyles() {
   const s = document.createElement('style');
   s.id = 'app-styles';
   s.textContent = `
+    /* Demo mode banner */
+    .demo-banner {
+      background: linear-gradient(135deg, rgba(249,115,22,0.12), rgba(234,179,8,0.08));
+      border-bottom: 1px solid rgba(249,115,22,0.25);
+      color: var(--text-muted); text-align: center;
+      padding: 0.55rem 1rem; font-size: 0.82rem; line-height: 1.4;
+    }
+    .demo-banner strong { color: var(--accent); }
+    .demo-banner a { color: var(--primary-light); text-decoration: underline; }
+
     /* Nav */
     .nav { height: 70px; display: flex; align-items: center; background: rgba(10,14,26,0.85); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 100; border-bottom: 1px solid var(--border); }
     .nav-inner { display: flex; justify-content: space-between; align-items: center; width: 100%; }
