@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
+import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -540,7 +541,6 @@ app.delete('/api/admin/blog/:id', (req, res) => {
 });
 
 // ── Static files (production build) ────────────────────────────
-import { existsSync } from 'fs';
 const distPath = join(__dirname, 'dist');
 if (existsSync(distPath)) {
   app.use(express.static(distPath));
